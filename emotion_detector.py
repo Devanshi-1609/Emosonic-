@@ -1,8 +1,11 @@
 import cv2
-from fer import FER
 import numpy as np
+from fer import FER
 
-# Map detected emotions to playlist-friendly moods
+# -----------------------------------
+# EMOTION TO MUSIC MOOD MAPPING
+# -----------------------------------
+
 EMOTION_TO_MOOD = {
     "happy": "happy",
     "sad": "sad",
@@ -13,34 +16,121 @@ EMOTION_TO_MOOD = {
     "neutral": "relax"
 }
 
-# Initialize FER detector once (faster if reused)
-detector = FER(mtcnn=True)
+# -----------------------------------
+# INITIALIZE DETECTOR
+# -----------------------------------
 
-# emotion_detector.py
+# mtcnn=False makes detection MUCH faster
+# Better for deployment + mobile devices
+
+detector = FER(mtcnn=False)
+
+# -----------------------------------
+# MAIN DETECTION FUNCTION
+# -----------------------------------
 
 def detect_emotion_live(frame: np.ndarray):
+
     """
-    Detects emotion from a frame and returns the mapped mood 
-    AND the raw emotion probabilities.
+    Detect emotion from image frame
+    Returns:
+        mood (str)
+        emotions (dict)
     """
-    if frame is None:
-        raise ValueError("No image/frame provided")
 
-    # Ensure frame is in RGB format
-    if frame.shape[2] == 4:
-        frame = frame[:, :, :3]
+    try:
 
-    result = detector.detect_emotions(frame)
+        # -----------------------------------
+        # VALIDATION
+        # -----------------------------------
 
-    if result:
-        # Get the dictionary of emotions (e.g., {'happy': 0.9, 'sad': 0.02, ...})
-        emotions = result[0]["emotions"]
-        detected_emotion = max(emotions, key=emotions.get)
-    else:
-        emotions = {"neutral": 1.0}
-        detected_emotion = "neutral"
+        if frame is None:
+            return "relax", {"neutral": 1.0}
 
-    mood = EMOTION_TO_MOOD.get(detected_emotion, "relax")
-    
-    # Return both the mood AND the raw scores dictionary
-    return mood, emotions
+        if not isinstance(frame, np.ndarray):
+            return "relax", {"neutral": 1.0}
+
+        # -----------------------------------
+        # HANDLE RGBA IMAGES
+        # -----------------------------------
+
+        if len(frame.shape) == 3 and frame.shape[2] == 4:
+            frame = frame[:, :, :3]
+
+        # -----------------------------------
+        # RESIZE FOR PERFORMANCE
+        # -----------------------------------
+
+        height, width = frame.shape[:2]
+
+        if width > 640:
+            scale = 640 / width
+            frame = cv2.resize(
+                frame,
+                (
+                    int(width * scale),
+                    int(height * scale)
+                )
+            )
+
+        # -----------------------------------
+        # ENSURE RGB FORMAT
+        # -----------------------------------
+
+        if frame.shape[2] == 3:
+            rgb_frame = cv2.cvtColor(
+                frame,
+                cv2.COLOR_BGR2RGB
+            )
+        else:
+            rgb_frame = frame
+
+        # -----------------------------------
+        # DETECT EMOTIONS
+        # -----------------------------------
+
+        results = detector.detect_emotions(rgb_frame)
+
+        # -----------------------------------
+        # NO FACE DETECTED
+        # -----------------------------------
+
+        if not results:
+
+            emotions = {
+                "neutral": 1.0
+            }
+
+            return "relax", emotions
+
+        # -----------------------------------
+        # GET TOP FACE
+        # -----------------------------------
+
+        emotions = results[0]["emotions"]
+
+        # -----------------------------------
+        # DETECT STRONGEST EMOTION
+        # -----------------------------------
+
+        detected_emotion = max(
+            emotions,
+            key=emotions.get
+        )
+
+        # -----------------------------------
+        # MAP TO MUSIC MOOD
+        # -----------------------------------
+
+        mood = EMOTION_TO_MOOD.get(
+            detected_emotion,
+            "relax"
+        )
+
+        return mood, emotions
+
+    except Exception as e:
+
+        print(f"Emotion Detection Error: {e}")
+
+        return "relax", {"neutral": 1.0}
