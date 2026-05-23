@@ -5,8 +5,6 @@ import pandas as pd
 import plotly.express as px
 import streamlit.components.v1 as components
 from PIL import Image
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
-import av
 
 from spotify_client import get_playlists_for_mood
 from emotion_detector import detect_emotion_live
@@ -78,6 +76,81 @@ div[data-testid="stImage"] img {
     margin-bottom: 20px;
 }
 
+.mood-badge {
+    display: inline-block;
+    padding: 15px 30px;
+    border-radius: 50px;
+    font-size: 28px;
+    font-weight: bold;
+    color: white;
+
+    background: linear-gradient(
+        135deg,
+        #ff4b4b,
+        #ff7b54,
+        #ff4b4b
+    );
+
+    background-size: 200% 200%;
+
+    animation:
+        gradientMove 4s ease infinite,
+        pulse 2s infinite;
+
+    box-shadow:
+        0 0 20px rgba(255,75,75,.5);
+}
+
+@keyframes pulse {
+
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.06);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+@keyframes gradientMove {
+
+    0% {
+        background-position: 0% 50%;
+    }
+
+    50% {
+        background-position: 100% 50%;
+    }
+
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+@media (max-width: 768px) {
+
+    h1 {
+        font-size: 1.8rem !important;
+        text-align: center;
+    }
+
+    .mood-box {
+        font-size: 22px;
+    }
+
+    iframe {
+        width: 100% !important;
+    }
+
+    .stButton>button {
+        font-size: 14px;
+    }
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -98,6 +171,19 @@ with col2:
     """, unsafe_allow_html=True)
 
 st.markdown("---")
+
+MOOD_EMOJIS = {
+    "happy": "😊",
+    "sad": "😢",
+    "angry": "😡",
+    "relax": "😌",
+    "party": "🥳",
+    "focus": "🎯",
+    "romantic": "❤️",
+    "energetic": "⚡",
+    "chill": "🌙",
+    "rock": "🎸"
+}
 
 # -----------------------------------
 # SIDEBAR
@@ -130,90 +216,66 @@ if input_mode == "🎥 Live Camera":
 
     st.subheader("🎥 Real-Time Emotion Detection")
 
+    run_camera = st.checkbox("Start Camera")
+
+    frame_placeholder = st.empty()
     mood_placeholder = st.empty()
     chart_placeholder = st.empty()
 
-    class EmotionProcessor(VideoTransformerBase):
+    if run_camera:
 
-        def transform(self, frame):
+        cap = cv2.VideoCapture(0)
 
-            img = frame.to_ndarray(format="bgr24")
+        while run_camera:
 
-            img = cv2.resize(img, (640, 480))
+            success, frame = cap.read()
 
-            rgb_frame = cv2.cvtColor(
-                img,
+            if not success:
+                st.error("Unable to access camera.")
+                break
+
+            frame_rgb = cv2.cvtColor(
+                frame,
                 cv2.COLOR_BGR2RGB
+            )
+
+            frame_placeholder.image(
+                frame_rgb,
+                channels="RGB",
+                width=800,
             )
 
             try:
 
                 mood, scores = detect_emotion_live(
-                    rgb_frame
+                    frame_rgb
                 )
 
-                # DEBUG
-                print("Detected Mood:", mood)
-
-                # SAVE
+                st.session_state["mood"] = mood
                 st.session_state["latest_mood"] = mood
-                st.session_state["scores"] = scores
 
-                # MOOD DISPLAY
-                mood_placeholder.success(
-                    f"Detected Mood: {mood.upper()}"
+                emoji = MOOD_EMOJIS.get(
+                mood,
+                "🎵"
                 )
 
-                # CHART
-                df_scores = pd.DataFrame(
-                    list(scores.items()),
-                    columns=["Emotion", "Score"]
+                mood_placeholder.markdown(
+                f"""
+                <div style="text-align:center;">
+                <div class="mood-badge">
+                {emoji} {mood.upper()}
+                </div>
+                </div>
+                """,
+                unsafe_allow_html=True
                 )
 
-                fig = px.bar(
-                    df_scores,
-                    x="Score",
-                    y="Emotion",
-                    orientation="h",
-                    color="Score",
-                    range_x=[0, 1]
-                )
-
-                fig.update_layout(
-                    height=350,
-                    template="plotly_dark"
-                )
-
-                chart_placeholder.plotly_chart(
-                    fig,
-                    use_container_width=True
-                )
+                st.session_state["latest_mood"] = mood
 
             except Exception as e:
-                print(e)
+                st.error(str(e))
 
-            return av.VideoFrame.from_ndarray(
-                img,
-                format="bgr24"
-            )
-
-    webrtc_ctx = webrtc_streamer(
-        key="emotion-detection",
-        video_transformer_factory=EmotionProcessor,
-        media_stream_constraints={
-            "video": {
-                "width": {"ideal": 640},
-                "height": {"ideal": 480},
-                "facingMode": "user"
-            },
-            "audio": False,
-        },
-        async_processing=True
-    )
-
-    if webrtc_ctx.state.playing:
-        st.success("✅ Camera Started Successfully")
-    else:
+        cap.release()
         st.info("📷 Click START to begin")
 
 # -----------------------------------
@@ -252,6 +314,7 @@ elif input_mode == "📸 Upload Selfie":
             )
 
             st.session_state["mood"] = mood
+            st.session_state["latest_mood"] = mood
             st.session_state["scores"] = scores
 
             with col2:
