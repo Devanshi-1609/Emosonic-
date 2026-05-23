@@ -438,3 +438,17 @@ if current_mood:
                     st.markdown(
                         f"[Open in Spotify]({playlist['url']})"
                     )
+                    st.markdown("---")
+
+                    st.markdown("""
+                    <div style="
+                    text-align:center;
+                    padding:20px;
+                    color:#94a3b8;
+                    ">
+
+                    Made with ❤️ using
+                    Python • Streamlit • FER • Spotify API
+
+                    </div>
+                    """, unsafe_allow_html=True)
