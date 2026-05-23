@@ -214,60 +214,69 @@ with st.sidebar:
 
 if input_mode == "🎥 Live Camera":
 
-    st.subheader("📷 Capture Your Emotion")
+    st.subheader("🎥 Real-Time Emotion Detection")
 
-    camera_image = st.camera_input(
-        "Take a selfie to detect your mood"
-    )
+    run_camera = st.checkbox("Start Camera")
 
-    if camera_image:
+    frame_placeholder = st.empty()
+    mood_placeholder = st.empty()
+    chart_placeholder = st.empty()
 
-        image = Image.open(camera_image)
+    if run_camera:
 
-        frame = np.array(image)
+        cap = cv2.VideoCapture(0)
 
-        st.image(
-            frame,
-            caption="Captured Image",
-            width=800
-        )
+        while run_camera:
 
-        try:
+            success, frame = cap.read()
 
-            mood, scores = detect_emotion_live(
-                frame
+            if not success:
+                st.error("Unable to access camera.")
+                break
+
+            frame_rgb = cv2.cvtColor(
+                frame,
+                cv2.COLOR_BGR2RGB
             )
 
-            st.session_state["mood"] = mood
-            st.session_state["latest_mood"] = mood
-            st.session_state["scores"] = scores
+            frame_placeholder.image(
+                frame_rgb,
+                channels="RGB",
+                width=800,
+            )
 
-            emoji = MOOD_EMOJIS.get(
+            try:
+
+                mood, scores = detect_emotion_live(
+                    frame_rgb
+                )
+
+                st.session_state["mood"] = mood
+                st.session_state["latest_mood"] = mood
+
+                emoji = MOOD_EMOJIS.get(
                 mood,
                 "🎵"
-            )
+                )
 
-            st.markdown(
+                mood_placeholder.markdown(
                 f"""
                 <div style="text-align:center;">
-                    <div class="mood-badge">
-                        {emoji} {mood.upper()}
-                    </div>
+                <div class="mood-badge">
+                {emoji} {mood.upper()}
+                </div>
                 </div>
                 """,
                 unsafe_allow_html=True
-            )
+                )
 
-        except Exception as e:
-            st.error(
-                f"Emotion detection failed: {e}"
-            )
+                st.session_state["latest_mood"] = mood
 
-    else:
+            except Exception as e:
+                st.error(str(e))
 
-        st.info(
-            "📷 Capture a photo to detect your emotion"
-        )
+        cap.release()
+        st.info("📷 Click START to begin")
 
 # -----------------------------------
 # UPLOAD SELFIE MODE
